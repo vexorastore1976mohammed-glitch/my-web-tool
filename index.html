@@ -4,34 +4,125 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>أداتي</title>
+  <title>أداتي 💜</title>
+
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
+      margin: 0;
+      min-height: 100vh;
       background: #171522;
       color: white;
       font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 80px 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
     }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+      background: #221e32;
+      border: 1px solid #39304f;
+      border-radius: 20px;
+      padding: 28px;
+      text-align: center;
+      box-shadow: 0 12px 40px #0004;
+    }
+
+    h1 {
+      color: #c4a5ff;
+    }
+
+    p {
+      color: #d0c9df;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      margin: 18px 0;
+      padding: 14px;
+      border: 1px solid #51436f;
+      border-radius: 12px;
+      background: #171522;
+      color: white;
+      font: 14px monospace;
+      direction: ltr;
+      text-align: left;
+      resize: vertical;
+    }
+
     button {
       background: #8b5cf6;
       color: white;
       border: 0;
       border-radius: 12px;
-      padding: 15px 35px;
-      font-size: 18px;
+      padding: 13px 28px;
+      font-size: 16px;
       cursor: pointer;
+    }
+
+    button:hover {
+      background: #7441e8;
+    }
+
+    #result {
+      margin-top: 18px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
     }
   </style>
 </head>
+
 <body>
-  <h1>أداتي 💜</h1>
-  <p>اضغط الزر لتشغيل الأداة</p>
-  <button onclick="runTool()">تشغيل</button>
+  <main class="container">
+    <h1>أداتي 💜</h1>
+    <p>اكتب كود JavaScript عادي وجربه هنا.</p>
+
+    <textarea id="code" placeholder="مثال:
+document.body.style.background = '#171522';
+console.log('أهلًا!');"></textarea>
+
+    <br>
+
+    <button onclick="runTool()">تشغيل الكود</button>
+
+    <div id="result" role="status">جاهز للتجربة ✨</div>
+  </main>
 
   <script>
     function runTool() {
-      alert("تم تشغيل الأداة!");
+      const code = document.getElementById("code").value;
+      const result = document.getElementById("result");
+
+      if (!code.trim()) {
+        result.textContent = "اكتب الكود أولًا.";
+        return;
+      }
+
+      try {
+        // تنفيذ JavaScript عادي داخل مساحة معزولة.
+        const frame = document.createElement("iframe");
+        frame.setAttribute("sandbox", "allow-scripts");
+        frame.style.display = "none";
+        document.body.appendChild(frame);
+
+        const output = frame.contentWindow;
+        output.console.log = (...args) => {
+          result.textContent = args.map(String).join(" ");
+        };
+
+        output.eval(code);
+        result.textContent = "تم إرسال الكود للتجربة ✅";
+        setTimeout(() => frame.remove(), 1000);
+      } catch (error) {
+        result.textContent = "حدث خطأ: " + error.message;
+      }
     }
   </script>
 </body>
