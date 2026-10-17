@@ -75,6 +75,12 @@
       margin-top: 18px;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
+      text-align: left;
+      direction: ltr;
+      background: #171522;
+      padding: 12px;
+      border-radius: 10px;
+      min-height: 44px;
     }
   </style>
 </head>
@@ -82,47 +88,134 @@
 <body>
   <main class="container">
     <h1>أداتي 💜</h1>
-    <p>اكتب كود JavaScript عادي وجربه هنا.</p>
+    <p>اكتب كود JavaScript وجربه في مساحة معزولة.</p>
 
     <textarea id="code" placeholder="مثال:
-document.body.style.background = '#171522';
-console.log('أهلًا!');"></textarea>
+console.log('أهلًا يا زلمة!');
+2 + 3"></textarea>
 
     <br>
-
-    <button onclick="runTool()">تشغيل الكود</button>
+    <button id="runButton">تشغيل الكود</button>
 
     <div id="result" role="status">جاهز للتجربة ✨</div>
   </main>
 
   <script>
-    function runTool() {
-      const code = document.getElementById("code").value;
-      const result = document.getElementById("result");
+    const codeInput = document.getElementById("code");
+    const result = document.getElementById("result");
+    const runButton = document.getElementById("runButton");
 
-      if (!code.trim()) {
+    runButton.addEventListener("click", runTool);
+
+    function runTool() {
+      const code = codeInput.value.trim();
+
+      if (!code) {
         result.textContent = "اكتب الكود أولًا.";
         return;
       }
 
-      try {
-        // تنفيذ JavaScript عادي داخل مساحة معزولة.
-        const frame = document.createElement("iframe");
-        frame.setAttribute("sandbox", "allow-scripts");
-        frame.style.display = "none";
-        document.body.appendChild(frame);
+      result.textContent = "جارٍ التشغيل...";
 
-        const output = frame.contentWindow;
-        output.console.log = (...args) => {
-          result.textContent = args.map(String).join(" ");
-        };
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-scripts");
+      frame.setAttribute("title", "بيئة تشغيل JavaScript");
+      frame.style.display = "none";
 
-        output.eval(code);
-        result.textContent = "تم إرسال الكود للتجربة ✅";
-        setTimeout(() => frame.remove(), 1000);
-      } catch (error) {
-        result.textContent = "حدث خطأ: " + error.message;
+      let finished = false;
+
+      function cleanup() {
+        window.removeEventListener("message", onMessage);
+        frame.remove();
+        runButton.disabled = false;
+        runButton.textContent = "تشغيل الكود";
       }
+
+      function onMessage(event) {
+        if (event.source !== frame.contentWindow) return;
+
+        const data = event.data;
+        if (!data || data.channel !== "js-tool") return;
+
+        if (data.type === "log") {
+          result.textContent = data.text;
+        } else if (data.type === "error") {
+          result.textContent = "خطأ: " + data.text;
+        } else if (data.type === "done") {
+          finished = true;
+          if (!data.logged) {
+            result.textContent = "تم تشغيل الكود بنجاح.";
+          }
+          cleanup();
+        }
+      }
+
+      window.addEventListener("message", onMessage);
+
+      frame.onload = function () {
+        const runner = `
+          (() => {
+            let logged = false;
+
+            console.log = (...args) => {
+              logged = true;
+              parent.postMessage({
+                channel: "js-tool",
+                type: "log",
+                text: args.map(String).join(" ")
+              }, "*");
+            };
+
+            try {
+              const fn = new Function(
+                "console",
+                '"use strict";\\n' +
+                ${JSON.stringify(code)}
+              );
+
+              const value = fn(console);
+
+              if (value !== undefined) {
+                console.log(value);
+              }
+
+              parent.postMessage({
+                channel: "js-tool",
+                type: "done",
+                logged
+              }, "*");
+            } catch (error) {
+              parent.postMessage({
+                channel: "js-tool",
+                type: "error",
+                text: error.message
+              }, "*");
+
+              parent.postMessage({
+                channel: "js-tool",
+                type: "done",
+                logged: true
+              }, "*");
+            }
+          })();
+        `;
+
+        const script = frame.contentDocument.createElement("script");
+        script.textContent = runner;
+        frame.contentDocument.body.appendChild(script);
+      };
+
+      runButton.disabled = true;
+      runButton.textContent = "جارٍ التشغيل...";
+      document.body.appendChild(frame);
+
+      setTimeout(() => {
+        if (!finished) {
+          result.textContent =
+            "انتهى الوقت؛ قد يكون الكود عالقًا أو لم يُكمل التشغيل.";
+          cleanup();
+        }
+      }, 3000);
     }
   </script>
 </body>
