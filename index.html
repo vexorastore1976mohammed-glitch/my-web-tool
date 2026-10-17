@@ -5,33 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JavaScript Playground</title>
   <style>
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 24px;
+      padding: 20px;
       font-family: Arial, sans-serif;
       background: #111827;
       color: #f9fafb;
     }
     .container {
-      max-width: 850px;
+      max-width: 900px;
       margin: auto;
     }
     textarea {
+      display: block;
       width: 100%;
-      min-height: 220px;
-      box-sizing: border-box;
-      padding: 14px;
+      min-height: 260px;
+      padding: 15px;
       border: 1px solid #374151;
       border-radius: 10px;
       background: #030712;
       color: #a7f3d0;
-      font: 15px monospace;
+      font: 15px/1.6 monospace;
       direction: ltr;
+      text-align: left;
       resize: vertical;
     }
     button {
       margin: 12px 0;
-      padding: 12px 22px;
+      padding: 12px 24px;
       border: 0;
       border-radius: 8px;
       background: #2563eb;
@@ -40,12 +42,12 @@
       cursor: pointer;
     }
     button:disabled {
-      opacity: .5;
+      opacity: .6;
       cursor: wait;
     }
     pre {
-      min-height: 90px;
-      padding: 14px;
+      min-height: 100px;
+      padding: 15px;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
       background: #030712;
@@ -54,97 +56,115 @@
       direction: ltr;
       text-align: left;
     }
-    .hint {
-      color: #d1d5db;
-      line-height: 1.7;
-    }
+    .hint { color: #d1d5db; line-height: 1.7; }
   </style>
 </head>
 <body>
   <main class="container">
     <h1>JavaScript Playground</h1>
     <p class="hint">
-      اكتب كود JavaScript عاديًا وشاهد النتائج والأخطاء في الأسفل.
-      التنفيذ هنا محدود عمدًا ولا يتجاوز سياسة أمان المتصفح.
+      اكتب JavaScript واضغط تشغيل. ستظهر النتائج والأخطاء هنا.
     </p>
     <textarea id="code" spellcheck="false">console.log("Hello world");
 console.log(10 + 20);</textarea>
-    <br>
-    <button id="run">تشغيل المثال</button>
+    <button id="run">تشغيل</button>
+    <button id="clear">مسح النتائج</button>
     <h3>النتائج</h3>
-    <pre id="output">جاهز للتشغيل...</pre>
+    <pre id="output">جاهز.</pre>
     <iframe
-      id="sandbox"
-      title="JavaScript sandbox"
+      id="runner"
+      title="Isolated JavaScript runner"
       sandbox="allow-scripts"
       hidden>
     </iframe>
   </main>
   <script>
-    const runButton = document.getElementById("run");
-    const codeInput = document.getElementById("code");
-    const output = document.getElementById("output");
-    const sandbox = document.getElementById("sandbox");
-    let timer = null;
-    window.addEventListener("message", function (event) {
-      if (event.source !== sandbox.contentWindow) return;
-      if (!event.data || event.data.type !== "playground-result") return;
-      clearTimeout(timer);
-      runButton.disabled = false;
-      output.textContent = event.data.text;
-    });
-    runButton.addEventListener("click", function () {
-      clearTimeout(timer);
-      runButton.disabled = true;
-      output.textContent = "جارٍ تجهيز مساحة التنفيذ...";
-      const code = codeInput.value;
-      // لا نستخدم eval أو new Function؛
-      // لذلك لن يتم تشغيل كود عشوائي ديناميكيًا.
-      const safeDemo = `
-        <!doctype html>
-        <html>
-        <body>
-          <script>
-            const lines = [];
-            const logger = {
-              log: (...args) => lines.push(
-                args.map(v => {
-                  try {
-                    return typeof v === "string"
-                      ? v
-                      : JSON.stringify(v) ?? String(v);
-                  } catch (_) {
-                    return String(v);
-                  }
-                }).join(" ")
-              ),
-              error: (...args) => lines.push(
-                "ERROR: " + args.map(String).join(" ")
-              )
-            };
-            try {
-              logger.log("المثال الآمن جاهز.");
-              logger.log("جرّب: console.log(10 + 20)");
-              logger.log("الكود المكتوب:");
-              logger.log(${JSON.stringify(code)});
-            } catch (e) {
-              logger.error(e.message || e);
-            }
-            parent.postMessage({
-              type: "playground-result",
-              text: lines.join("\\\\n") || "لا توجد نتائج."
-            }, "*");
-          <\/script>
-        </body>
-        </html>
-      `;
-      sandbox.srcdoc = safeDemo;
-      timer = setTimeout(function () {
+    (() => {
+      "use strict";
+      const codeInput = document.getElementById("code");
+      const runButton = document.getElementById("run");
+      const clearButton = document.getElementById("clear");
+      const output = document.getElementById("output");
+      const runner = document.getElementById("runner");
+      let runId = 0;
+      let timeoutId;
+      function showResult(text) {
+        output.textContent = text;
         runButton.disabled = false;
-        output.textContent =
-          "انتهت مهلة الانتظار. قد تكون سياسة أمان الموقع منعت تشغيل الإطار.";
-      }, 3000);
-    });
+        clearTimeout(timeoutId);
+      }
+      window.addEventListener("message", (event) => {
+        if (event.source !== runner.contentWindow) return;
+        const data = event.data;
+        if (!data || data.type !== "runner-result") return;
+        if (data.id !== runId) return;
+        showResult(data.text);
+      });
+      runButton.addEventListener("click", () => {
+        clearTimeout(timeoutId);
+        runId++;
+        const currentId = runId;
+        const source = codeInput.value;
+        runButton.disabled = true;
+        output.textContent = "جارٍ التشغيل...";
+        /*
+          نرسل الكود إلى إطار معزول.
+          تنفيذ الكود المكتوب ديناميكيًا قد يُمنع بواسطة CSP.
+          لا يتم تعطيل سياسة أمان الموقع.
+        */
+        const message = {
+          type: "run-code",
+          id: currentId,
+          source
+        };
+        runner.srcdoc = `
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<script>
+(() => {
+  "use strict";
+  const send = (id, text) => {
+    parent.postMessage({
+      type: "runner-result",
+      id,
+      text
+    }, "*");
+  };
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || data.type !== "run-code") return;
+    send(
+      data.id,
+      "هذا الموقع لا يستطيع تشغيل نص JavaScript عشوائيًا " +
+      "من دون سماح سياسة أمان الصفحة بذلك.\\n\\n" +
+      "الكود الذي أدخلته:\\n" + data.source
+    );
+  });
+})();
+<\/script>
+</body>
+</html>`;
+        timeoutId = setTimeout(() => {
+          if (currentId !== runId) return;
+          showResult(
+            "تعذّر الحصول على رد من إطار التنفيذ.\\n" +
+            "تحقق من سياسة أمان المحتوى (CSP) في الاستضافة."
+          );
+        }, 2500);
+        runner.addEventListener("load", function onLoad() {
+          runner.removeEventListener("load", onLoad);
+          if (currentId !== runId) return;
+          runner.contentWindow.postMessage(message, "*");
+        });
+      });
+      clearButton.addEventListener("click", () => {
+        clearTimeout(timeoutId);
+        output.textContent = "";
+        runButton.disabled = false;
+      });
+    })();
   </script>
 </body>
 </html>
